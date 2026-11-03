@@ -695,12 +695,15 @@ type MarkerPopupProps = {
   className?: string;
   /** Show a close button in the popup (default: false) */
   closeButton?: boolean;
+  /** Open the popup automatically (e.g. when the cafe is picked from the list) */
+  open?: boolean;
 } & Omit<PopupOptions, "className" | "closeButton">;
 
 function MarkerPopup({
   children,
   className,
   closeButton = false,
+  open,
   ...popupOptions
 }: MarkerPopupProps) {
   const { marker, map } = useMarkerContext();
@@ -729,9 +732,18 @@ function MarkerPopup({
 
     return () => {
       marker.setPopup(null);
+      popup.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
+
+  // Auto-open when requested (e.g. cafe picked from the list, not marker click).
+  useEffect(() => {
+    if (!map || !open) return;
+    popup.setDOMContent(container);
+    popup.setLngLat(marker.getLngLat()).addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, open]);
 
   // Sync popup options when they change.
   useEffect(() => {

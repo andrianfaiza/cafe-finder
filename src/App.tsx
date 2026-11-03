@@ -12,6 +12,7 @@ import {
   type CafeSpot,
 } from "@/lib/cafes";
 import { fetchDrivingRoute, type RouteResult } from "@/lib/routes";
+import { attachViewportCafes, type ViewportCafeLoader } from "@/lib/mapCafeLayer";
 import { cn } from "@/lib/utils";
 
 type UserPos = { lat: number; lng: number; accuracy?: number };
@@ -52,6 +53,52 @@ export default function App() {
   const mapRef = useRef<MapRef | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
   const routeAbort = useRef<AbortController | null>(null);
+  const loaderRef = useRef<ViewportCafeLoader | null>(null);
+  const cafesRef = useRef<CafeSpot[]>([]);
+  cafesRef.current = cafes;
+  const selectRef = useRef<(cafe: CafeSpot) => void>(() => {});
+
+  // Pemuatan bounding box: hanya kafe di area peta yang sedang terlihat
+  // yang diminta; tiap pan/zoom (moveend) layer viewport dimuat ulang.
+  useEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      if (cancelled) return;
+      const map = mapRef.current;
+      if (!map) {
+        if (++tries > 200) window.clearInterval(timer);
+        return;
+      }
+      window.clearInterval(timer);
+      loaderRef.current = attachViewportCafes(map, {
+        getExcludeIds: () => new Set(cafesRef.current.map((c) => c.id)),
+        onSelect: (spot) => {
+          if (cafesRef.current.some((c) => c.id === spot.id)) {
+            selectRef.current(spot);
+          } else {
+            map.easeTo({
+              center: [spot.lng, spot.lat],
+              zoom: Math.max(map.getZoom(), 12),
+              duration: 500,
+            });
+          }
+        },
+      });
+    }, 150);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      loaderRef.current?.detach();
+      loaderRef.current = null;
+    };
+  }, []);
+
+  // Kafe yang sudah ada di list (marker DOM berlabel) jangan digambar
+  // ulang oleh layer viewport.
+  useEffect(() => {
+    loaderRef.current?.refresh();
+  }, [cafes]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -70,7 +117,7 @@ export default function App() {
         mapRef.current?.flyTo({ center: [pos.lng, pos.lat], zoom: 15, duration: 1000 });
         setLabel("Lokasi kamu");
         setError(null);
-        runSearch((signal) => fetchCafesAround(pos.lat, pos.lng, 2500, signal));
+        runSearch((signal) => fetchCafesAround(pos.lat, pos.lng, 10000, signal));
       } catch {
         // Izin ditolak — biarkan default Indonesia.
       }
@@ -173,7 +220,7 @@ export default function App() {
       mapRef.current?.flyTo({ center: [pos.lng, pos.lat], zoom: 15, duration: 1200 });
       setLabel("Lokasi kamu");
       setLocating(false);
-      await runSearch((signal) => fetchCafesAround(pos.lat, pos.lng, 2500, signal));
+      await runSearch((signal) => fetchCafesAround(pos.lat, pos.lng, 10000, signal));
     } catch (err) {
       setError((err as Error).message || "Gagal mengambil lokasi.");
     } finally {
@@ -204,10 +251,15 @@ export default function App() {
       const r = await fetchDrivingRoute([pos.lng, pos.lat], [cafe.lng, cafe.lat], ac.signal);
       if (routeAbort.current === ac) {
         setRoute(r);
-        mapRef.current?.fitBounds(
-          [[pos.lng, pos.lat], [cafe.lng, cafe.lat]],
-          { padding: 90, duration: 800 },
-        );
+        // Fokus ke geometri rute sebenarnya (bukan hanya 2 titik) agar seperti Google Maps
+        if (r.coordinates.length > 0) {
+          mapRef.current?.fitBounds(r.coordinates as any, { padding: 90, maxZoom: 17, duration: 800 });
+        } else {
+          mapRef.current?.fitBounds(
+            [[pos.lng, pos.lat], [cafe.lng, cafe.lat]],
+            { padding: 90, duration: 800 },
+          );
+        }
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -218,6 +270,7 @@ export default function App() {
       if (routeAbort.current === ac) setRouting(false);
     }
   };
+  selectRef.current = handleSelectCafe;
 
   const handleClear = () => {
     setSelectedId(null);
@@ -319,7 +372,10 @@ export default function App() {
                 latitude={cafe.lat}
                 longitude={cafe.lng}
                 anchor="bottom"
-                onClick={() => handleSelectCafe(cafe)}
+                onClick={(e) => {
+              e.stopPropagation();
+              handleSelectCafe(cafe);
+            }}
               >
                 <MarkerContent>
                   <span className="relative flex flex-col items-center">
@@ -345,7 +401,7 @@ export default function App() {
                   </span>
                 </MarkerContent>
                 {active && (
-                  <MarkerPopup offset={28}>
+                  <MarkerPopup offset={28} open>
                     <div className="space-y-2 p-1">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-popover-foreground">

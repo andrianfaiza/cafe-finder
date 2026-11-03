@@ -115,8 +115,8 @@ export async function fetchCafesAround(
   radiusMeters: number,
   signal?: AbortSignal | null,
 ): Promise<CafeSpot[]> {
-  const r = Math.min(Math.max(Math.round(radiusMeters), 500), 8000);
-  const q = `[out:json][timeout:25];(node["amenity"="cafe"](around:${r},${lat},${lng});way["amenity"="cafe"](around:${r},${lat},${lng}););out center tags 200;`;
+  const r = Math.min(Math.max(Math.round(radiusMeters), 500), 20000);
+  const q = `[out:json][timeout:25];(node["amenity"="cafe"](around:${r},${lat},${lng});way["amenity"="cafe"](around:${r},${lat},${lng}););out center tags 500;`;
   const data = await overpassQuery(q, signal);
   return collectSpots(data);
 }
@@ -127,7 +127,7 @@ async function fetchCafesInBbox(
   [w, s, e, n]: [number, number, number, number],
   signal?: AbortSignal | null,
 ): Promise<CafeSpot[]> {
-  const q = `[out:json][timeout:25];(node["amenity"="cafe"](${s},${w},${n},${e});way["amenity"="cafe"](${s},${w},${n},${e}););out center tags 200;`;
+  const q = `[out:json][timeout:25];(node["amenity"="cafe"](${s},${w},${n},${e});way["amenity"="cafe"](${s},${w},${n},${e}););out center tags 500;`;
   return collectSpots(await overpassQuery(q, signal));
 }
 
@@ -175,7 +175,7 @@ function collectSpots(data: OverpassRes): CafeSpot[] {
     });
   }
   spots.sort((a, b) => a.name.localeCompare(b.name));
-  return spots.slice(0, 150);
+  return spots;
 }
 
 export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -187,4 +187,14 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+// Cafes inside a [west, south, east, north] bbox — for dynamic viewport layer.
+export async function fetchCafesInViewport(
+  [w, s, e, n]: [number, number, number, number],
+  signal?: AbortSignal | null,
+  limit = 150,
+): Promise<CafeSpot[]> {
+  const q = `[out:json][timeout:20];(node["amenity"="cafe"](${s},${w},${n},${e});way["amenity"="cafe"](${s},${w},${n},${e}););out center tags ${limit};`;
+  return collectSpots(await overpassQuery(q, signal));
 }
