@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Coffee, Loader2, Locate, Moon, Search, Sun, X } from "lucide-react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { Map, MapAccuracyCircle, MapMarker, MapRoute, MarkerContent, MarkerPopup } from "@/components/ui/map";
 import type { MapRef } from "@/components/ui/map";
 import { CafeList } from "@/components/CafeList";
@@ -404,6 +405,7 @@ export default function App() {
           onSortChange={setSort}
         />
       ) : null}
+      <SpeedInsights />
     </>
   );
 }
