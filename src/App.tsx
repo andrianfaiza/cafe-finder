@@ -12,6 +12,7 @@ import {
 } from "@/lib/cafes";
 import { fetchDrivingRoute, type RouteResult } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 type UserPos = { lat: number; lng: number; accuracy?: number };
 
@@ -404,6 +405,7 @@ export default function App() {
           onSortChange={setSort}
         />
       ) : null}
+      <SpeedInsights />
     </>
   );
 }
