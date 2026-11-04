@@ -4,6 +4,9 @@ import { Coffee, Loader2, Locate, Moon, Search, Sun, X } from "lucide-react";
 import { Map, MapAccuracyCircle, MapMarker, MapRoute, MarkerContent, MarkerPopup } from "@/components/ui/map";
 import type { MapRef } from "@/components/ui/map";
 import { CafeList } from "@/components/CafeList";
+import { LangSwitch } from "@/components/LangSwitch";
+import { AppError, translateError } from "@/lib/errors";
+import { useLang } from "@/lib/i18n";
 import {
   fetchCafesAround,
   fetchCafesForPlace,
@@ -23,23 +26,24 @@ const DEFAULT_ZOOM = 4;
 function requestPosition(): Promise<UserPos & { accuracy: number }> {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
-      reject(new Error("Browser tidak mendukung lokasi."));
+      reject(new AppError("error.geoUnsupported"));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
-      (err) => reject(new Error(err.code === 1 ? "Izin lokasi ditolak." : "Gagal mengambil lokasi.")),
+      (err) => reject(new AppError(err.code === 1 ? "error.geoDenied" : "error.geoFailed")),
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
   });
 }
 
 export default function App() {
+  const { t } = useLang();
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [label, setLabel] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [label, setLabel] = useState<{ key: "label.myLocation" } | { text: string } | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [cafes, setCafes] = useState<CafeSpot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -48,7 +52,7 @@ export default function App() {
 
   const [route, setRoute] = useState<RouteResult | null>(null);
   const [routing, setRouting] = useState(false);
-  const [routeError, setRouteError] = useState<string | null>(null);
+  const [routeError, setRouteError] = useState<unknown>(null);
 
   const mapRef = useRef<MapRef | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
@@ -115,7 +119,7 @@ export default function App() {
         if (!mounted) return;
         setUserPos(pos);
         mapRef.current?.flyTo({ center: [pos.lng, pos.lat], zoom: 15, duration: 1000 });
-        setLabel("Lokasi kamu");
+        setLabel({ key: "label.myLocation" });
         setError(null);
         runSearch((signal) => fetchCafesAround(pos.lat, pos.lng, 10000, signal));
       } catch {
@@ -166,7 +170,7 @@ export default function App() {
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       setCafes([]);
-      setError((err as Error).message || "Terjadi kesalahan.");
+      setError(err);
     } finally {
       setSearching(false);
     }
@@ -184,11 +188,11 @@ export default function App() {
     try {
       const places = await geocodePlaces(q);
       if (!places.length) {
-        setError(`Tempat "${q}" tidak ditemukan. Coba nama kota lain.`);
+        setError(new AppError("error.placeNotFound", { q }));
         return;
       }
       const place = places[0];
-      setLabel(place.label);
+      setLabel({ text: place.label });
       if (place.bbox) {
         mapRef.current?.fitBounds(
           [
@@ -202,7 +206,7 @@ export default function App() {
       }
       await runSearch((signal) => fetchCafesForPlace(place, signal));
     } catch (err) {
-      if ((err as Error).name !== "AbortError") setError((err as Error).message || "Gagal mencari tempat.");
+      if ((err as Error).name !== "AbortError") setError(err);
     } finally {
       setSearching(false);
     }
@@ -218,11 +222,11 @@ export default function App() {
       const pos = await requestPosition();
       setUserPos(pos);
       mapRef.current?.flyTo({ center: [pos.lng, pos.lat], zoom: 15, duration: 1200 });
-      setLabel("Lokasi kamu");
+      setLabel({ key: "label.myLocation" });
       setLocating(false);
       await runSearch((signal) => fetchCafesAround(pos.lat, pos.lng, 10000, signal));
     } catch (err) {
-      setError((err as Error).message || "Gagal mengambil lokasi.");
+      setError(err);
     } finally {
       setLocating(false);
     }
@@ -238,7 +242,7 @@ export default function App() {
         pos = await requestPosition();
         setUserPos(pos);
       } catch {
-        setRouteError("Izinkan akses lokasi untuk membuat rute.");
+        setRouteError(new AppError("error.routeNeedLocation"));
         return;
       }
     }
@@ -263,7 +267,7 @@ export default function App() {
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
-        setRouteError((err as Error).message || "Gagal membuat rute.");
+        setRouteError(err);
         mapRef.current?.flyTo({ center: [cafe.lng, cafe.lat], zoom: 16, duration: 800 });
       }
     } finally {
@@ -281,9 +285,13 @@ export default function App() {
   const distanceKm = route ? route.distanceM / 1000 : 0;
   const durationMin = route ? Math.max(1, Math.round(route.durationS / 60)) : 0;
 
-  const straightLineLabel =
+  const labelText = label ? ("key" in label ? t(label.key) : label.text) : null;
+  const errorText = error ? translateError(error, t) : null;
+  const routeErrorText = routeError ? translateError(routeError, t) : null;
+
+  const straightLineDist =
     userPos && selectedCafe
-      ? `${haversineKm(userPos.lat, userPos.lng, selectedCafe.lat, selectedCafe.lng).toFixed(1)} km lurus`
+      ? `${haversineKm(userPos.lat, userPos.lng, selectedCafe.lat, selectedCafe.lng).toFixed(1)} km`
       : "";
 
   return (
@@ -293,24 +301,24 @@ export default function App() {
           <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
             <Coffee className="size-5" />
           </span>
-          <span className="text-lg font-semibold tracking-tight">Cafe Finder</span>
+          <span className="hidden text-lg font-semibold tracking-tight sm:inline">Cafe Finder</span>
         </a>
 
-        <form onSubmit={handleSearch} className="mx-auto w-full max-w-[520px] flex-1">
+        <form onSubmit={handleSearch} className="mx-auto w-full min-w-0 max-w-[520px] flex-1">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari kota atau tempat… (mis. Bandung, Melbourne)"
-              aria-label="Cari lokasi kafe"
+              placeholder={t("header.searchPlaceholder")}
+              aria-label={t("header.searchAria")}
               className="h-10 w-full rounded-full border border-input bg-secondary/60 pl-10 pr-14 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:bg-background"
             />
             <button
               type="submit"
               disabled={searching || !query.trim()}
               className="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-              aria-label="Cari"
+              aria-label={t("header.searchSubmitAria")}
             >
               {searching ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
             </button>
@@ -318,12 +326,13 @@ export default function App() {
         </form>
 
         <div className="flex shrink-0 items-center gap-2">
+          <LangSwitch />
           <button
             type="button"
             onClick={handleLocate}
             disabled={locating}
-            title="Pakai lokasi saya"
-            aria-label="Pakai lokasi saya"
+            title={t("header.locateAria")}
+            aria-label={t("header.locateAria")}
             className="flex size-9 items-center justify-center rounded-full border border-input bg-secondary/60 text-secondary-foreground transition-colors hover:bg-secondary disabled:opacity-60"
           >
             {locating ? <Loader2 className="size-4 animate-spin" /> : <Locate className="size-4" />}
@@ -331,8 +340,8 @@ export default function App() {
           <button
             type="button"
             onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-            title={theme === "light" ? "Mode gelap" : "Mode terang"}
-            aria-label="Ganti tema"
+            title={t(theme === "light" ? "header.themeToDark" : "header.themeToLight")}
+            aria-label={t("header.themeAria")}
             className="flex size-9 items-center justify-center rounded-full border border-input bg-secondary/60 text-secondary-foreground transition-colors hover:bg-secondary"
           >
             {theme === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}
@@ -414,28 +423,38 @@ export default function App() {
                             setSelectedId(null);
                             clearRoute();
                           }}
-                          aria-label="Tutup"
+                          aria-label={t("popup.closeAria")}
                           className="shrink-0 rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
                           <X className="size-4" />
                         </button>
                       </div>
                       <p className="line-clamp-2 text-xs text-muted-foreground">
-                        {cafe.address ?? "Alamat tidak tersedia"}
+                        {cafe.address ?? t("popup.noAddress")}
                       </p>
-                      {straightLineLabel && (
-                        <p className="text-xs text-muted-foreground">Jarak lurus {straightLineLabel}</p>
+                      {straightLineDist && (
+                        <p className="text-xs text-muted-foreground">
+                          {t("popup.straightLine", { dist: straightLineDist })}
+                        </p>
                       )}
                       {routing && (
                         <p className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Loader2 className="size-3.5 animate-spin" />
-                          Membuat rute berkendara…
+                          {t("popup.routing")}
                         </p>
                       )}
-                      {routeError && <p className="text-xs text-destructive">{routeError}</p>}
+                      {routeErrorText && (
+                        <p className="text-xs text-destructive">{routeErrorText}</p>
+                      )}
                       {route && (
                         <p className="text-sm font-medium text-foreground">
-                          Rute berkendara: {distanceKm >= 1 ? `${distanceKm.toFixed(1)} km` : `${Math.round(route.distanceM)} m`} · ±{durationMin} mnt
+                          {t("popup.route", {
+                            dist:
+                              distanceKm >= 1
+                                ? `${distanceKm.toFixed(1)} km`
+                                : `${Math.round(route.distanceM)} m`,
+                            mins: durationMin,
+                          })}
                         </p>
                       )}
                     </div>
@@ -447,15 +466,16 @@ export default function App() {
         </Map>
       </main>
 
-      {label || searching || error ? (
+      {labelText || searching || errorText ? (
         <CafeList
-          cafes={cafes}
-          label={label}
+          spots={cafes}
+          label={labelText}
           loading={searching}
-          error={error}
+          error={errorText}
           selectedId={selectedId}
           userPos={userPos}
           sort={sort}
+          routeError={routeErrorText}
           onSelect={handleSelectCafe}
           onClose={handleClear}
           onSortChange={setSort}
