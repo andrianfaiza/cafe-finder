@@ -182,14 +182,7 @@ export function CafeList({
             </div>
           )}
 
-          <button
-            type="button"
-            aria-label={t("list.closeAria")}
-            onClick={onClose}
-            className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <SearchX className="size-4" />
-          </button>
+          
         </header>
 
         {/* === CONTENT SCROLLABLE === */}
