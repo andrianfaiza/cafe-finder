@@ -1,3 +1,5 @@
+import { AppError } from "@/lib/errors";
+
 export type RouteResult = {
   coordinates: [number, number][]; // [lng, lat] pairs — same order MapLibre uses
   distanceM: number;
@@ -15,11 +17,11 @@ export async function fetchDrivingRoute(
     `${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson&alternatives=3`;
   const res = await fetch(url, { signal });
   if (!res.ok) {
-    throw new Error(`Gagal membuat rute (${res.status})`);
+    throw new AppError("error.routeStatus", { status: res.status });
   }
   const data = await res.json();
   if (data.code !== "Ok" || !data.routes?.length) {
-    throw new Error("Rute berkendara tidak ditemukan untuk lokasi ini.");
+    throw new AppError("error.routeNotFound");
   }
   // Pilih rute terdekat (jarak terpendek) di antaranya seperti Google Maps
   const route = data.routes.reduce(

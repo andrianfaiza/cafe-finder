@@ -1,3 +1,5 @@
+import { AppError } from "@/lib/errors";
+
 export type CafeSpot = {
   id: string;
   name: string;
@@ -54,10 +56,10 @@ export async function geocodePlaces(
   const url = `${NOMINATIM_URL}?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { signal });
   if (res.status === 403) {
-    throw new Error("Pencarian lokasi dibatasi sementara, coba lagi sebentar.");
+    throw new AppError("error.geoRateLimited");
   }
   if (!res.ok) {
-    throw new Error(`Gagal mencari lokasi (${res.status})`);
+    throw new AppError("error.geoStatus", { status: res.status });
   }
   const data: RawPlace[] = await res.json();
   return data.map((p) => {
@@ -94,19 +96,19 @@ async function overpassQuery(
           continue; // this mirror is busy — try the next one
         }
         if (!res.ok) {
-          throw new Error(`Gagal memuat kafe (${res.status})`);
+          throw new AppError("error.cafeStatus", { status: res.status });
         }
         return (await res.json()) as OverpassRes;
       } catch (err) {
         if ((err as Error).name === "AbortError") throw err;
-        if ((err as Error).message.startsWith("Gagal")) throw err;
+        if (err instanceof AppError) throw err;
         lastError = err; // network hiccup — try the next mirror
         await sleep(800);
       }
     }
   }
   console.error("Overpass failed on all endpoints:", lastError);
-  throw new Error("Layanan kafe (OpenStreetMap) sibuk, coba lagi sebentar.");
+  throw new AppError("error.cafeBusy");
 }
 
 export async function fetchCafesAround(
