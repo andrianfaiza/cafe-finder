@@ -1,4 +1,4 @@
-import { Coffee, MapPin, SearchX } from "lucide-react";
+import { Coffee, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { haversineKm, type CafeSpot } from "@/lib/cafes";
 import { useSnapDrawer } from "@/hooks/useSnapDrawer";
@@ -17,7 +17,6 @@ interface CafeListProps {
   sort: SortMode;
   routeError: string | null;
   onSelect: (spot: CafeSpot) => void;
-  onClose: () => void;
   onSortChange: (mode: SortMode) => void;
 }
 
@@ -34,7 +33,6 @@ export function CafeList({
   sort,
   routeError,
   onSelect,
-  onClose,
   onSortChange,
 }: CafeListProps) {
   const { t } = useLang();

@@ -276,11 +276,6 @@ export default function App() {
   };
   selectRef.current = handleSelectCafe;
 
-  const handleClear = () => {
-    setSelectedId(null);
-    clearRoute();
-  };
-
   const selectedCafe = cafes.find((c) => c.id === selectedId) ?? null;
   const distanceKm = route ? route.distanceM / 1000 : 0;
   const durationMin = route ? Math.max(1, Math.round(route.durationS / 60)) : 0;
@@ -477,7 +472,6 @@ export default function App() {
           sort={sort}
           routeError={routeErrorText}
           onSelect={handleSelectCafe}
-          onClose={handleClear}
           onSortChange={setSort}
         />
       ) : null}
